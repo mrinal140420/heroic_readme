@@ -27,33 +27,47 @@ export default function MyApp({ Component, pageProps }) {
   const vantaEffect = useRef(null);
 
   const setupVanta = () => {
-    if (window.VANTA && !vantaEffect.current) {
+    if (typeof window !== 'undefined' && window.VANTA && !vantaEffect.current) {
       vantaEffect.current = window.VANTA.BIRDS({
         el: '#vanta-background',
-    mouseControls: true,
-  touchControls: true,
-  gyroControls: true  ,
-  minHeight: 200.00,
-  minWidth: 200.00,
-  scale: 1.00,
-  scaleMobile: 1.00,
-  backgroundColor:0x81cfe6,
-  color1: 0x2e0e7a,
-  color2: 0x32a8c3,
-  birdSize: 2.10,
-  wingSpan: 26.00,
-  separation: 45.00
+        mouseControls: true,
+        touchControls: true,
+        gyroControls: false,
+        minHeight: 200.0,
+        minWidth: 200.0,
+        scale: 1.0,
+        scaleMobile: 1.0,
+        backgroundColor: 0x81cfe6,
+        color1: 0x2e0e7a,
+        color2: 0x32a8c3,
+        birdSize: 2.1,
+        wingSpan: 26.0,
+        separation: 45.0,
       });
     }
   };
 
+  // 💡 Reinitialize Vanta on every route change
   useEffect(() => {
     const handleStart = () => setIsRouteChanging(true);
-    const handleComplete = () => setIsRouteChanging(false);
+    const handleComplete = () => {
+      setIsRouteChanging(false);
+      if (vantaEffect.current) {
+        vantaEffect.current.destroy();
+        vantaEffect.current = null;
+      }
+      // Delay a bit to ensure DOM is rendered
+      setTimeout(setupVanta, 100); 
+    };
 
     router.events.on('routeChangeStart', handleStart);
     router.events.on('routeChangeComplete', handleComplete);
     router.events.on('routeChangeError', handleComplete);
+
+    // Initial load
+    if (typeof window !== 'undefined') {
+      setTimeout(setupVanta, 100);
+    }
 
     return () => {
       router.events.off('routeChangeStart', handleStart);
@@ -68,7 +82,7 @@ export default function MyApp({ Component, pageProps }) {
 
   return (
     <>
-      {/* Load Three.js before Vanta.js */}
+      {/* Required libraries */}
       <Script
         src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"
         strategy="beforeInteractive"
@@ -76,7 +90,7 @@ export default function MyApp({ Component, pageProps }) {
       <Script
         src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.birds.min.js"
         strategy="afterInteractive"
-        onLoad={setupVanta}
+        onLoad={() => setTimeout(setupVanta, 100)}
       />
 
       <VantaBackground />
