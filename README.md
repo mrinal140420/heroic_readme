@@ -52,7 +52,7 @@ Fork the repository by clicking the 'Fork' button on the top right of the page.
 
 Clone your forked repository
 
-git clone https://github.com/YOUR_USERNAME/heroic_readme.git
+git clone https://github.com/mrinal140420/heroic_readme
 
 Navigate to the project directory
 
