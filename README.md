@@ -1,4 +1,4 @@
-Heroic Readme 🦸‍♂️✨
+# Heroic Readme 🦸‍♂️✨
 <div align="center">
 
 A powerful and intuitive tool to generate beautiful and informative README files for your GitHub projects in minutes.
