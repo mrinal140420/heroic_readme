@@ -1,0 +1,70 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_REGION = 'ap-south-1'
+        AWS_ACCOUNT_ID = '877485452541'
+        ECR_REPO = 'node/heroic'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        ECR_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/mrinal140420/skill-forge-.git'
+            }
+        }
+
+        stage('Verify Tools and Identity') {
+            steps {
+                sh '''
+                    docker --version
+                    aws --version
+                    aws sts get-caller-identity
+                '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                    docker build -t heroic:${IMAGE_TAG} .
+                    docker tag heroic:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
+                    docker tag heroic:${IMAGE_TAG} ${ECR_URI}:latest
+                '''
+            }
+        }
+
+        stage('Login to ECR') {
+            steps {
+                sh '''
+                    aws ecr get-login-password --region ${AWS_REGION} | \
+                    docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                '''
+            }
+        }
+
+        stage('Push to ECR') {
+            steps {
+                sh '''
+                    docker push ${ECR_URI}:${IMAGE_TAG}
+                    docker push ${ECR_URI}:latest
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Image pushed successfully: ${ECR_URI}:${IMAGE_TAG}"
+        }
+        failure {
+            echo "Pipeline failed"
+        }
+        always {
+            sh 'docker image prune -f || true'
+        }
+    }
+}
