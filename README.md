@@ -28,7 +28,7 @@ Here's a quick look at how Heroic Readme works. You can also visit the live appl
 <img width="2879" height="1713" alt="image" src="https://github.com/user-attachments/assets/534c7dcf-dc93-424a-82b1-d694d3b33765" />
 
 
-🛠️ Technologies Used
+## 🛠️ Technologies Used
 This project is built with a modern and robust tech stack:
 
 Frontend: Next.js / React
@@ -37,7 +37,7 @@ Styling: CSS,Vanta JS
 
 Deployment: Vercel
 
-⚙️ Getting Started
+## ⚙️ Getting Started
 To get a local copy up and running, follow these simple steps.
 
 Prerequisites
@@ -68,7 +68,7 @@ npm run dev
 
 Open http://localhost:3000 with your browser to see the result.
 
-🤝 How to Contribute
+## 🤝 How to Contribute
 Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are greatly appreciated.
 
 If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
@@ -85,13 +85,13 @@ Open a Pull Request
 
 Don't forget to give the project a star! Thanks again!
 
-📜 License
+## 📜 License
 Distributed under the MIT License. See LICENSE for more information.
 
-📧 Contact
+## 📧 Contact
 Mrinal -mrinalsahoo25@gmail.com
 
-Project Link: https://github.com/mrinal140420/heroic_readme
+## Project Link: https://github.com/mrinal140420/heroic_readme
 
 <div align="center">
 Made with ❤️ by the Open Source Community
