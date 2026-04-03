@@ -22,23 +22,17 @@ pipeline {
             }
         }
 
-        stage('Verify Tools and Identity') {
+        stage('Verify Tools and AWS Identity') {
             steps {
                 sh '''
-                    set -e
-                    echo "Current workspace:"
-                    pwd
-                    ls -la
-
-                    echo "Tool versions:"
+                    set -euo pipefail
                     docker --version
                     aws --version
                     kubectl version --client
 
-                    echo "AWS identity:"
+                    echo "AWS identity in Jenkins:"
                     aws sts get-caller-identity
 
-                    echo "Checking Dockerfile:"
                     test -f Dockerfile
                 '''
             }
@@ -47,7 +41,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh '''
-                    set -e
+                    set -euo pipefail
                     docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
                     docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
                     docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_URI}:latest
@@ -58,7 +52,7 @@ pipeline {
         stage('Login to ECR') {
             steps {
                 sh '''
-                    set -e
+                    set -euo pipefail
                     aws ecr get-login-password --region ${AWS_REGION} | \
                     docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
                 '''
@@ -68,7 +62,7 @@ pipeline {
         stage('Push to ECR') {
             steps {
                 sh '''
-                    set -e
+                    set -euo pipefail
                     docker push ${ECR_URI}:${IMAGE_TAG}
                     docker push ${ECR_URI}:latest
                 '''
@@ -78,10 +72,19 @@ pipeline {
         stage('Configure kubectl for EKS') {
             steps {
                 sh '''
-                    set -e
-                    aws eks update-kubeconfig --region ${AWS_REGION} --name ${CLUSTER_NAME}
+                    set -euo pipefail
+
+                    mkdir -p ~/.kube
+
+                    aws eks update-kubeconfig \
+                      --region ${AWS_REGION} \
+                      --name ${CLUSTER_NAME}
+
                     kubectl config current-context
-                    kubectl get nodes
+
+                    echo "Testing cluster auth..."
+                    kubectl auth can-i get nodes || true
+                    kubectl get ns
                 '''
             }
         }
@@ -89,7 +92,8 @@ pipeline {
         stage('Deploy to EKS') {
             steps {
                 sh '''
-                    set -e
+                    set -euo pipefail
+
                     kubectl -n ${K8S_NAMESPACE} set image deployment/${DEPLOYMENT_NAME} \
                       ${CONTAINER_NAME}=${ECR_URI}:${IMAGE_TAG}
 
@@ -101,15 +105,10 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 sh '''
-                    set -e
-                    echo "Pods:"
+                    set -euo pipefail
+                    kubectl -n ${K8S_NAMESPACE} get deployment ${DEPLOYMENT_NAME} -o wide
                     kubectl -n ${K8S_NAMESPACE} get pods -o wide
-
-                    echo "Services:"
                     kubectl -n ${K8S_NAMESPACE} get svc
-
-                    echo "Deployment:"
-                    kubectl -n ${K8S_NAMESPACE} get deployment ${DEPLOYMENT_NAME}
                 '''
             }
         }
@@ -121,6 +120,15 @@ pipeline {
         }
         failure {
             echo "Pipeline failed"
+            sh '''
+                set +e
+                echo "==== AWS identity ===="
+                aws sts get-caller-identity
+                echo "==== kubeconfig context ===="
+                kubectl config current-context
+                echo "==== can-i ===="
+                kubectl auth can-i get pods -A
+            '''
         }
         always {
             sh 'docker image prune -f || true'
