@@ -2,12 +2,16 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION     = 'ap-south-1'
-        AWS_ACCOUNT_ID = '877485452541'
-        ECR_REPO       = 'node/heroic'
-        IMAGE_NAME     = 'heroic'
-        IMAGE_TAG      = "${BUILD_NUMBER}"
-        ECR_URI        = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+        AWS_REGION      = 'ap-south-1'
+        AWS_ACCOUNT_ID  = '877485452541'
+        ECR_REPO        = 'node/heroic'
+        IMAGE_NAME      = 'heroic'
+        IMAGE_TAG       = "${BUILD_NUMBER}"
+        ECR_URI         = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+        CLUSTER_NAME    = 'heroic-cluster'
+        DEPLOYMENT_NAME = 'heroic'
+        CONTAINER_NAME  = 'heroic'
+        K8S_NAMESPACE   = 'default'
     }
 
     stages {
@@ -29,6 +33,7 @@ pipeline {
                     echo "Tool versions:"
                     docker --version
                     aws --version
+                    kubectl version --client
 
                     echo "AWS identity:"
                     aws sts get-caller-identity
@@ -69,11 +74,50 @@ pipeline {
                 '''
             }
         }
+
+        stage('Configure kubectl for EKS') {
+            steps {
+                sh '''
+                    set -e
+                    aws eks update-kubeconfig --region ${AWS_REGION} --name ${CLUSTER_NAME}
+                    kubectl config current-context
+                    kubectl get nodes
+                '''
+            }
+        }
+
+        stage('Deploy to EKS') {
+            steps {
+                sh '''
+                    set -e
+                    kubectl -n ${K8S_NAMESPACE} set image deployment/${DEPLOYMENT_NAME} \
+                      ${CONTAINER_NAME}=${ECR_URI}:${IMAGE_TAG}
+
+                    kubectl -n ${K8S_NAMESPACE} rollout status deployment/${DEPLOYMENT_NAME} --timeout=300s
+                '''
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                    set -e
+                    echo "Pods:"
+                    kubectl -n ${K8S_NAMESPACE} get pods -o wide
+
+                    echo "Services:"
+                    kubectl -n ${K8S_NAMESPACE} get svc
+
+                    echo "Deployment:"
+                    kubectl -n ${K8S_NAMESPACE} get deployment ${DEPLOYMENT_NAME}
+                '''
+            }
+        }
     }
 
     post {
         success {
-            echo "Image pushed successfully: ${ECR_URI}:${IMAGE_TAG}"
+            echo "Image pushed and deployed successfully: ${ECR_URI}:${IMAGE_TAG}"
         }
         failure {
             echo "Pipeline failed"
