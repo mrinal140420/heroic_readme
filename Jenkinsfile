@@ -12,6 +12,7 @@ pipeline {
         DEPLOYMENT_NAME = 'heroic'
         CONTAINER_NAME  = 'heroic'
         K8S_NAMESPACE   = 'default'
+        KUBECONFIG      = "${WORKSPACE}/.kube/config"
     }
 
     stages {
@@ -25,13 +26,19 @@ pipeline {
         stage('Verify Tools and AWS Identity') {
             steps {
                 sh '''
-                    set -euo pipefail
+                    set -eu
+
+                    echo "=== Tool versions ==="
                     docker --version
                     aws --version
                     kubectl version --client
 
-                    echo "AWS identity in Jenkins:"
+                    echo "=== AWS identity in Jenkins ==="
                     aws sts get-caller-identity
+
+                    echo "=== Workspace ==="
+                    pwd
+                    ls -la
 
                     test -f Dockerfile
                 '''
@@ -41,7 +48,8 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh '''
-                    set -euo pipefail
+                    set -eu
+
                     docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
                     docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
                     docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_URI}:latest
@@ -52,7 +60,8 @@ pipeline {
         stage('Login to ECR') {
             steps {
                 sh '''
-                    set -euo pipefail
+                    set -eu
+
                     aws ecr get-login-password --region ${AWS_REGION} | \
                     docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
                 '''
@@ -62,7 +71,8 @@ pipeline {
         stage('Push to ECR') {
             steps {
                 sh '''
-                    set -euo pipefail
+                    set -eu
+
                     docker push ${ECR_URI}:${IMAGE_TAG}
                     docker push ${ECR_URI}:latest
                 '''
@@ -72,19 +82,21 @@ pipeline {
         stage('Configure kubectl for EKS') {
             steps {
                 sh '''
-                    set -euo pipefail
+                    set -eu
 
-                    mkdir -p ~/.kube
+                    mkdir -p "$(dirname "$KUBECONFIG")"
 
                     aws eks update-kubeconfig \
                       --region ${AWS_REGION} \
-                      --name ${CLUSTER_NAME}
+                      --name ${CLUSTER_NAME} \
+                      --kubeconfig ${KUBECONFIG}
 
-                    kubectl config current-context
+                    echo "=== Current context ==="
+                    kubectl --kubeconfig ${KUBECONFIG} config current-context
 
-                    echo "Testing cluster auth..."
-                    kubectl auth can-i get nodes || true
-                    kubectl get ns
+                    echo "=== Cluster access ==="
+                    kubectl --kubeconfig ${KUBECONFIG} get nodes
+                    kubectl --kubeconfig ${KUBECONFIG} get ns
                 '''
             }
         }
@@ -92,12 +104,14 @@ pipeline {
         stage('Deploy to EKS') {
             steps {
                 sh '''
-                    set -euo pipefail
+                    set -eu
 
-                    kubectl -n ${K8S_NAMESPACE} set image deployment/${DEPLOYMENT_NAME} \
+                    kubectl --kubeconfig ${KUBECONFIG} -n ${K8S_NAMESPACE} \
+                      set image deployment/${DEPLOYMENT_NAME} \
                       ${CONTAINER_NAME}=${ECR_URI}:${IMAGE_TAG}
 
-                    kubectl -n ${K8S_NAMESPACE} rollout status deployment/${DEPLOYMENT_NAME} --timeout=300s
+                    kubectl --kubeconfig ${KUBECONFIG} -n ${K8S_NAMESPACE} \
+                      rollout status deployment/${DEPLOYMENT_NAME} --timeout=300s
                 '''
             }
         }
@@ -105,10 +119,19 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 sh '''
-                    set -euo pipefail
-                    kubectl -n ${K8S_NAMESPACE} get deployment ${DEPLOYMENT_NAME} -o wide
-                    kubectl -n ${K8S_NAMESPACE} get pods -o wide
-                    kubectl -n ${K8S_NAMESPACE} get svc
+                    set -eu
+
+                    echo "=== Deployment ==="
+                    kubectl --kubeconfig ${KUBECONFIG} -n ${K8S_NAMESPACE} \
+                      get deployment ${DEPLOYMENT_NAME} -o wide
+
+                    echo "=== Pods ==="
+                    kubectl --kubeconfig ${KUBECONFIG} -n ${K8S_NAMESPACE} \
+                      get pods -o wide
+
+                    echo "=== Services ==="
+                    kubectl --kubeconfig ${KUBECONFIG} -n ${K8S_NAMESPACE} \
+                      get svc
                 '''
             }
         }
@@ -118,20 +141,31 @@ pipeline {
         success {
             echo "Image pushed and deployed successfully: ${ECR_URI}:${IMAGE_TAG}"
         }
+
         failure {
             echo "Pipeline failed"
             sh '''
                 set +e
+
                 echo "==== AWS identity ===="
-                aws sts get-caller-identity
+                aws sts get-caller-identity || true
+
                 echo "==== kubeconfig context ===="
-                kubectl config current-context
+                kubectl --kubeconfig ${KUBECONFIG} config current-context || true
+
+                echo "==== cluster auth test ===="
+                kubectl --kubeconfig ${KUBECONFIG} get nodes || true
+
                 echo "==== can-i ===="
-                kubectl auth can-i get pods -A
+                kubectl --kubeconfig ${KUBECONFIG} auth can-i get pods -A || true
             '''
         }
+
         always {
-            sh 'docker image prune -f || true'
+            sh '''
+                set +e
+                docker image prune -f || true
+            '''
         }
     }
 }
